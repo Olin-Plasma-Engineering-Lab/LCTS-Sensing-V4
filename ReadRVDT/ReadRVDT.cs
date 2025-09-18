@@ -1,8 +1,7 @@
 ﻿//-----------------------------------------------------------------------------
 // ReadRVDT.cs
 //
-// Read the values from an analog pin on a T7 that is connected to the RVDT 
-// and write the values to a CSV
+// Read the values from an analog pin on a T7 and write the data to a CSV
 //-----------------------------------------------------------------------------
 using System;
 using System.IO;
@@ -85,14 +84,25 @@ namespace WriteReadLoopWithConfig
                     Environment.Exit(0);
                 }
 
+                Console.Write("Ready to take data? Pressing any key while data is being collected");
+                Console.WriteLine("will cause the script to exit. BE CAREFUL! Type 'yes' and press enter to acknowledge.");
+
+                if (Console.ReadLine() != "yes")
+                {
+                    Console.WriteLine("Incorrect response. Exiting program. Bye!");
+                    Environment.Exit(0);
+                }
+
                 Console.WriteLine("\nStarting read loop.  Press a key to stop.");
                 LJM.StartInterval(intervalHandle, 100000);
 
-                var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                var csv = new StringBuilder();
+                var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
                 var filePath = fileTimestamp + ".csv";
-                // Write CSV header
-                csv.AppendLine("Timestamp,Channel,Value");
+                // Write CSV header if file does not exist
+                if (!File.Exists(filePath))
+                {
+                    File.AppendAllText(filePath, "Timestamp,Channel,Value" + Environment.NewLine);
+                }
 
                 while (!Console.KeyAvailable)
                 {
@@ -108,7 +118,8 @@ namespace WriteReadLoopWithConfig
                     for (int i = 0; i < numFrames; i++)
                     {
                         Console.Write(" " + aNames[i] + " = " + aValues[i].ToString("F4") + ", ");
-                        csv.AppendLine($"{timestamp},{aNames[i]},{aValues[i]:F4}");
+                        // Append each row to the CSV file immediately
+                        File.AppendAllText(filePath, $"{timestamp},{aNames[i]},{aValues[i]:F4}" + Environment.NewLine);
                     }
                     Console.WriteLine("");
 
@@ -119,8 +130,7 @@ namespace WriteReadLoopWithConfig
                         Console.WriteLine("SkippedIntervals: " + skippedIntervals);
                     }
                 }
-                // Write all CSV data to file after loop
-                File.WriteAllText(filePath, csv.ToString());
+                // Data is already written during the loop; nothing to do here
             }
             catch (LJM.LJMException e)
             {

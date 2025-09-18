@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReadRVDT", "ReadRVDT\ReadRVDT.csproj", "{19809C14-05BB-414E-824E-CFA9F2CBB92D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Calibrate", "Calibrate\Calibrate.csproj", "{35260880-2E00-4687-90F0-9B2D1D5C07A0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +20,9 @@ Global
 		{19809C14-05BB-414E-824E-CFA9F2CBB92D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{19809C14-05BB-414E-824E-CFA9F2CBB92D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{19809C14-05BB-414E-824E-CFA9F2CBB92D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35260880-2E00-4687-90F0-9B2D1D5C07A0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35260880-2E00-4687-90F0-9B2D1D5C07A0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35260880-2E00-4687-90F0-9B2D1D5C07A0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35260880-2E00-4687-90F0-9B2D1D5C07A0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
