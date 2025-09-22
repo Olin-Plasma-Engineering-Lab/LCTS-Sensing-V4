@@ -22,10 +22,13 @@ namespace Device
             this.desiredFrequency = desiredFrequency;
         }
 
+
+
         public int CalculateDutyCycle(int angle)
         {
             // 0 deg = 1ms, 180 deg = 2ms, 50Hz (20ms period)
             // duty_cycle = 5 + (angle / 36)
+            // Determined using common servo control data
             return 5 + (angle / 36);
         }
 
@@ -42,6 +45,23 @@ namespace Device
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_DIVISOR", clockDivisor);
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue);
             LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CONFIG_A", pwmConfigA);
+            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {desiredDutyCycle} % is now being output on DIO{pwmDIO} for 10 seconds.");
+
+        }
+
+        public void TurnOffPWM()
+        {
+            // Turn off Clock and PWM output.
+                string[] aNames =
+                [
+                    "DIO_EF_CLOCK0_ENABLE",
+                    String.Format("DIO{0}_EF_ENABLE", pwmDIO),
+                ];
+            int errorAddress = -1;
+
+                double[] aValues = [0, 0];
+                int numFrames = aNames.Length;
+                LJM.eWriteNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
         }
     }
 }

@@ -9,34 +9,45 @@ namespace Device
     public class DataAcquisition
     {
         private LabJackDevice device;
-        private string filePath;
+        private string filePath = "";
 
-        public DataAcquisition(LabJackDevice device, string filePath)
+        public DataAcquisition(LabJackDevice device)
         {
             this.device = device;
-            this.filePath = filePath;
         }
 
-        public void WriteHeaderIfNeeded()
+        public void CreateOutputFile()
         {
-            if (!File.Exists(filePath))
+            var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
+            this.filePath = fileTimestamp + ".csv";
+            // Write CSV header if file does not exist
+            if (!File.Exists(this.filePath))
             {
-                File.AppendAllText(filePath, "Timestamp,Channel,Value" + Environment.NewLine);
+                File.AppendAllText(this.filePath, "Timestamp,Channel,Value" + Environment.NewLine);
             }
+            Console.WriteLine($"Output file path created: {this.filePath}");
         }
 
         public void ReadAndSave()
         {
-            string[] aNames = new string[] { "AIN0", "FIO2" };
-            double[] aValues = new double[] { 0, 0 };
-            int numFrames = aNames.Length;
-            int errorAddress = -1;
-            LJM.eReadNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            for (int i = 0; i < numFrames; i++)
+            if (!File.Exists(this.filePath))
             {
-                File.AppendAllText(filePath, $"{timestamp},{aNames[i]},{aValues[i]:F4}" + Environment.NewLine);
+                double[] aValues = [0, 0];
+                int numFrames = device.inputPins.Length;
+                int errorAddress = -1;
+                LJM.eReadNames(device.Handle, numFrames, device.inputPins, aValues, ref errorAddress);
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                for (int i = 0; i < numFrames; i++)
+                {
+                    Console.Write(" " + device.inputPins[i] + " = " + aValues[i].ToString("F4") + ", ");
+                    File.AppendAllText(this.filePath, $"{timestamp},{device.inputPins[i]},{aValues[i]:F4}" + Environment.NewLine);
+                }
             }
+            else
+            {
+                Console.WriteLine("File does not exist. Creating file");
+                CreateOutputFile();
+                }
         }
     }
 }

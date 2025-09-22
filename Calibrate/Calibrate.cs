@@ -6,75 +6,84 @@
 //-----------------------------------------------------------------------------
 using System;
 using System.Threading;
-using LabJack;
 using Device;
+using LabJack;
 
 
-namespace DioEFConfigPwm
+namespace Calibrate
 {
-    class DioEFConfigPwm
+    class Calibrate
     {
-
         static void Main(string[] args)
         {
-            try
-            {
-                using (var device = new LabJackDevice())
+            Calibrate pwm = new();
+            pwm.ConfigurePWM();
+        }
+
+        public void ConfigurePWM()
+        {
+            // ------------- USER INPUT VALUES -------------
+            int desiredFrequency = 50;  // Set this value to your desired PWM Frequency Hz. 
+            int desiredDutyCycle = 50;     // Set this value to your desired PWM Duty Cycle percentage. Default 50%
+
+            int positionZero = 0;
+            int positionOne = 1;
+            int positionTwo = 2;
+            int positionThree = 3;
+            int positionFour = 4;
+            string[] inputPins = [];
+
+            LabJackDevice device = new(inputPins);
+
+            int[] calibrationPositions = [positionZero, positionOne, positionTwo, positionThree, positionFour];
+            // ---------------------------------------------
+
+            // --- Configure Clock and PWM ---
+            int errorAddress = -1;
+            int pwmDIO = 2;  // DIO Pin that will generate the PWM signal, set based on device type below. 
+            int coreFrequency = 80000000;  // Device Specific Core Clock Frequency, used to calculate Clock Roll Value.
+            int clockDivisor = 1;  // Clock Divisor to use in configuration.
+            string[] aNames;
+            double[] aValues;
+            int numFrames = 0;
+
+            ServoCalibration servoCal = new(device, coreFrequency, pwmDIO, clockDivisor, desiredFrequency);
+
+
+            
+
+                foreach (int position in calibrationPositions)
                 {
-                    device.Open();
-                    int devType = device.DevType;
-                    int coreFrequency = 0;
-                    int pwmDIO = 0;
-                    switch (devType)
-                    {
-                        case LJM.CONSTANTS.dtT4:
-                            pwmDIO = 6;
-                            coreFrequency = 80000000;
-                            break;
-                        case LJM.CONSTANTS.dtT7:
-                            pwmDIO = 2;
-                            coreFrequency = 80000000;
-                            break;
-                        case LJM.CONSTANTS.dtT8:
-                            pwmDIO = 2;
-                            coreFrequency = 100000000;
-                            break;
-                    }
-                    int clockDivisor = 1;
-                    int desiredFrequency = 50;
-                    var servo = new ServoCalibration(device, devType, coreFrequency, pwmDIO, clockDivisor, desiredFrequency);
-
-                    int[] calibrationPositions = new int[] { 0, 45, 90, 135, 180 };
-                    foreach (int position in calibrationPositions)
-                    {
-                        Console.WriteLine($"Press enter to go to angle {position} degrees");
-                        Console.ReadLine();
-                        servo.SetServoAngle(position);
-                        Console.WriteLine($"Servo set to go to angle {position} degrees. Press enter to continue.");
-                        Console.ReadLine();
-                    }
-
-                    // Turn off Clock and PWM output
-                    string[] aNames = new string[]
-                    {
-                        "DIO_EF_CLOCK0_ENABLE",
-                        $"DIO{pwmDIO}_EF_ENABLE"
-                    };
-                    double[] aValues = new double[] { 0, 0 };
-                    int numFrames = aNames.Length;
-                    int errorAddress = -1;
-                    LabJack.LJM.eWriteNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
+                    Console.WriteLine($"Press enter to go to angle {position} degrees");
+                    Console.ReadLine();
+                servoCal.SetServoAngle(position);
+                    Console.WriteLine($"Servo set to go to angle {position} degrees. Press enter to go to continue.");
+                    Console.ReadLine();
                 }
+
+
+                // Turn off Clock and PWM output.
+                aNames = new string[]
+                {
+                    "DIO_EF_CLOCK0_ENABLE",
+                    String.Format("DIO{0}_EF_ENABLE", pwmDIO),
+                };
+
+                aValues = new double[] { 0, 0 };
+                numFrames = aNames.Length;
+                LJM.eWriteNames(handle, numFrames, aNames, aValues, ref errorAddress);
+
+
+                LJM.CloseAll(); // Close all handles
+
+                Console.WriteLine("\nDone.\nPress the enter key to exit.");
+                Console.ReadLine(); // Pause for user
             }
             catch (LJM.LJMException e)
             {
-                Console.Out.WriteLine("LJMException: " + e.ToString());
-                Console.Out.WriteLine(e.StackTrace);
+                // An Error has occurred.
+                showErrorMessage(e);
             }
-
-            Console.WriteLine("\nDone.\nPress the enter key to exit.");
-            Console.ReadLine();
         }
-
     }
 }

@@ -12,7 +12,6 @@
     </Reference>
   </ItemGroup>
 
-</Project>
   <ItemGroup>
     <Compile Include="..\Device\*.cs" />
   </ItemGroup>
