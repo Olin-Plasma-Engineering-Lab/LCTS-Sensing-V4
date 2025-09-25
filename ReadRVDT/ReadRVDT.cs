@@ -22,8 +22,7 @@ namespace ReadRVDT
             int intervalHandle = 1;
             int skippedIntervals = 0;
 
-            string[] inputPins = ["AIO0"];
-            //string pinOne = "AIO1";
+            string[] inputPins = ["AIN0"];
 
             Console.WriteLine("Hello OPEL!");
             Console.ReadLine();
@@ -34,7 +33,7 @@ namespace ReadRVDT
 
 
             Console.Write("Ready to take data? Pressing any key while data is being collected");
-            Console.WriteLine("will cause the script to exit. BE CAREFUL! Type 'yes' and press enter to acknowledge.");
+            Console.WriteLine(" will cause the script to exit. BE CAREFUL! Type 'yes' and press enter to acknowledge.");
 
             if (Console.ReadLine() != "yes")
             {

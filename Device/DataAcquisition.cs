@@ -30,7 +30,7 @@ namespace Device
 
         public void ReadAndSave()
         {
-            if (!File.Exists(this.filePath))
+            if (File.Exists(this.filePath))
             {
                 double[] aValues = [0, 0];
                 int numFrames = device.inputPins.Length;
@@ -39,7 +39,7 @@ namespace Device
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 for (int i = 0; i < numFrames; i++)
                 {
-                    Console.Write(" " + device.inputPins[i] + " = " + aValues[i].ToString("F4") + ", ");
+                    Console.WriteLine(device.inputPins[i] + " = " + aValues[i].ToString("F4"));
                     File.AppendAllText(this.filePath, $"{timestamp},{device.inputPins[i]},{aValues[i]:F4}" + Environment.NewLine);
                 }
             }

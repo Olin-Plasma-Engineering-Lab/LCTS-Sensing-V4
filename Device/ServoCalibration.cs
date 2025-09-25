@@ -12,6 +12,7 @@ namespace Device
         private int pwmDIO;
         private int clockDivisor;
         private int desiredFrequency;
+        private int desiredDutyCycle;
 
         public ServoCalibration(LabJackDevice device, int devType, int coreFrequency, int pwmDIO, int clockDivisor = 1, int desiredFrequency = 50)
         {
@@ -45,7 +46,7 @@ namespace Device
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_DIVISOR", clockDivisor);
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue);
             LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CONFIG_A", pwmConfigA);
-            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {desiredDutyCycle} % is now being output on DIO{pwmDIO} for 10 seconds.");
+            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {dutyCycle} % is now being output on DIO{pwmDIO} for 10 seconds.");
 
         }
 

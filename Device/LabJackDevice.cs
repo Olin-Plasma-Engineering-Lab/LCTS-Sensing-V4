@@ -47,7 +47,7 @@ namespace Device
                 showErrorMessage(e);
                 Console.WriteLine("Error occurred. Press enter to exit.");
                 Console.ReadLine();
-                Environment.Exit(1);
+                Environment.Exit(-1);
             }
         }
 
@@ -83,7 +83,7 @@ namespace Device
             else
             {
                 Console.WriteLine("\n Incompatible Device. Exiting");
-                Environment.Exit(1);
+                Environment.Exit(-1);
             }
         }
 

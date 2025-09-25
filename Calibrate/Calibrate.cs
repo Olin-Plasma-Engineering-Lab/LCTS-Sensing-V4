@@ -14,6 +14,11 @@ namespace Calibrate
 {
     class Calibrate
     {
+        // Parameterless constructor
+        public Calibrate()
+        {
+        }
+
         static void Main(string[] args)
         {
             Calibrate pwm = new();
@@ -24,7 +29,7 @@ namespace Calibrate
         {
             // ------------- USER INPUT VALUES -------------
             int desiredFrequency = 50;  // Set this value to your desired PWM Frequency Hz. 
-            int desiredDutyCycle = 50;     // Set this value to your desired PWM Duty Cycle percentage. Default 50%
+            // int desiredDutyCycle = 50;     // Set this value to your desired PWM Duty Cycle percentage. Default 50%
 
             int positionZero = 0;
             int positionOne = 1;
@@ -71,7 +76,7 @@ namespace Calibrate
 
                 aValues = new double[] { 0, 0 };
                 numFrames = aNames.Length;
-                LJM.eWriteNames(handle, numFrames, aNames, aValues, ref errorAddress);
+                LJM.eWriteNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
 
 
                 LJM.CloseAll(); // Close all handles
@@ -79,11 +84,5 @@ namespace Calibrate
                 Console.WriteLine("\nDone.\nPress the enter key to exit.");
                 Console.ReadLine(); // Pause for user
             }
-            catch (LJM.LJMException e)
-            {
-                // An Error has occurred.
-                showErrorMessage(e);
-            }
         }
     }
-}
