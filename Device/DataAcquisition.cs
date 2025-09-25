@@ -23,7 +23,9 @@ namespace Device
             // Write CSV header if file does not exist
             if (!File.Exists(this.filePath))
             {
-                File.AppendAllText(this.filePath, "Timestamp,Channel,Value" + Environment.NewLine);
+                // Header: Timestamp,<pin1>,<pin2>,...
+                string header = "Timestamp," + string.Join(",", device.inputPins);
+                File.AppendAllText(this.filePath, header + Environment.NewLine);
             }
             Console.WriteLine($"Output file path created: {this.filePath}");
         }
@@ -32,22 +34,26 @@ namespace Device
         {
             if (File.Exists(this.filePath))
             {
-                double[] aValues = [0, 0];
+                double[] aValues = new double[device.inputPins.Length];
                 int numFrames = device.inputPins.Length;
                 int errorAddress = -1;
                 LJM.eReadNames(device.Handle, numFrames, device.inputPins, aValues, ref errorAddress);
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                // Write one row: Timestamp,<val1>,<val2>,...
+                string row = timestamp + "," + string.Join(",", aValues.Select(v => v.ToString("F4")));
+                File.AppendAllText(this.filePath, row + Environment.NewLine);
+                // Print all values
                 for (int i = 0; i < numFrames; i++)
                 {
-                    Console.WriteLine(device.inputPins[i] + " = " + aValues[i].ToString("F4"));
-                    File.AppendAllText(this.filePath, $"{timestamp},{device.inputPins[i]},{aValues[i]:F4}" + Environment.NewLine);
+                    Console.WriteLine($"{device.inputPins[i]} = {aValues[i]:F4}");
                 }
+                Console.WriteLine("All values: " + string.Join(", ", aValues.Select(v => v.ToString("F4"))));
             }
             else
             {
                 Console.WriteLine("File does not exist. Creating file");
                 CreateOutputFile();
-                }
+            }
         }
     }
 }

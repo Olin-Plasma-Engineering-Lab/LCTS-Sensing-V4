@@ -22,7 +22,7 @@ namespace ReadRVDT
             int intervalHandle = 1;
             int skippedIntervals = 0;
 
-            string[] inputPins = ["AIN0"];
+            string[] inputPins = ["AIN0", "AIN1", "AIN2", "AIN3", "AIN4", "AIN5"];
 
             Console.WriteLine("Hello OPEL!");
             Console.ReadLine();
@@ -38,6 +38,7 @@ namespace ReadRVDT
             if (Console.ReadLine() != "yes")
             {
                 Console.WriteLine("Incorrect response. Exiting program. Bye!");
+                Console.ReadLine();
                 Environment.Exit(0);
             }
 
@@ -48,7 +49,7 @@ namespace ReadRVDT
             DataAcquisition daq = new(device);
             daq.CreateOutputFile();
 
-            while (!Console.KeyAvailable)
+            while (true)
             {
 
                 daq.ReadAndSave();
@@ -60,8 +61,10 @@ namespace ReadRVDT
                     Console.WriteLine("SkippedIntervals: " + skippedIntervals);
                 }
             }
+            
+            
 
-
+            Console.ReadLine();
             //Close interval and device handles
             LJM.CleanInterval(intervalHandle);
             device.Dispose();
