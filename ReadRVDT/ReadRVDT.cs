@@ -49,7 +49,7 @@ namespace ReadRVDT
             DataAcquisition daq = new(device);
             daq.CreateOutputFile();
 
-            while (true)
+            while (!Console.KeyAvailable)
             {
 
                 daq.ReadAndSave();

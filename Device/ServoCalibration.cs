@@ -1,6 +1,5 @@
 // ServoCalibration.cs
 // Handles servo PWM control and calibration logic
-using System;
 using LabJack;
 
 namespace Device
@@ -12,8 +11,7 @@ namespace Device
         private int pwmDIO;
         private int clockDivisor;
         private int desiredFrequency;
-        private int desiredDutyCycle;
-
+        
         public ServoCalibration(LabJackDevice device, int devType, int coreFrequency, int pwmDIO, int clockDivisor = 1, int desiredFrequency = 50)
         {
             this.device = device;
@@ -46,7 +44,7 @@ namespace Device
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_DIVISOR", clockDivisor);
             LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue);
             LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CONFIG_A", pwmConfigA);
-            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {dutyCycle} % is now being output on DIO{pwmDIO} for 10 seconds.");
+            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {dutyCycle} % is now being output on DIO{pwmDIO}");
 
         }
 
@@ -56,11 +54,11 @@ namespace Device
                 string[] aNames =
                 [
                     "DIO_EF_CLOCK0_ENABLE",
-                    String.Format("DIO{0}_EF_ENABLE", pwmDIO),
+                    string.Format("DIO{0}_EF_ENABLE", pwmDIO),
                 ];
             int errorAddress = -1;
 
-                double[] aValues = [0, 0];
+                double[] aValues = new double[device.inputPins.Length];
                 int numFrames = aNames.Length;
                 LJM.eWriteNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
         }

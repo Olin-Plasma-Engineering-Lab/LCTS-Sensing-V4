@@ -1,7 +1,5 @@
 // LabJackDevice.cs
 // Shared device connection and basic operations
-using System;
-using System.Runtime.CompilerServices;
 using LabJack;
 
 namespace Device
@@ -34,12 +32,13 @@ namespace Device
         {
             try
             {
+                Console.WriteLine("Connecting to device...");
                 LJM.OpenS(deviceType, connectionType, identifier, ref _handle);
                 LJM.GetHandleInfo(_handle, ref _devType, ref _conType, ref _serNum, ref _ipAddr, ref _port, ref _maxBytesPerMB);
                 LJM.NumberToIP(_ipAddr, ref _ipAddrStr);
                 _isOpen = true;
-                Console.WriteLine("Opened a LabJack with Device type: " + _devType + ", Connection type: " + _conType + ",");
-                Console.WriteLine("  Serial number: " + _serNum + ", IP address: " + _ipAddrStr + ", Port: " + _port + ",");
+                Console.Write("Opened a LabJack with Device type: " + _devType + ", Connection type: " + _conType + ",");
+                Console.Write("  Serial number: " + _serNum + ", IP address: " + _ipAddrStr + ", Port: " + _port + ",");
                 Console.WriteLine("  Max bytes per MB: " + _maxBytesPerMB);
             }
             catch (LJM.LJMException e)
