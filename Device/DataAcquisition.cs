@@ -34,8 +34,8 @@ namespace Device
             }
             else
             {
-                var fileTimestamp = DateTime.Now.ToString("calibration: yyyy-MM-dd HH-mm-ss.fff");
-                filePath = fileTimestamp + ".csv";
+                var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
+                filePath = "calibration - " + fileTimestamp + ".csv";
                 // Write CSV header if file does not exist
                 if (!File.Exists(filePath))
                 {
@@ -58,20 +58,30 @@ namespace Device
             return aValues;
         }
 
-        private void PrintValues(double[] aValues)
+        private void PrintValues(double[] aValues, int? position)
         {
-            for (int i = 0; i < device.inputPins.Length; i++)
+            if (isCalibrating & position is not null)
             {
-                Console.WriteLine($"{device.inputPins[i]} = {aValues[i]:F4}");
+                for (int i = 0; i < device.inputPins.Length; i++)
+                {
+                    Console.WriteLine($"{position}:{device.inputPins[i]} = {aValues[i]:F4}");
+                }
+                // Console.WriteLine("All values: " + string.Join(", ", aValues.Select(v => v.ToString("F4"))));
             }
-            Console.WriteLine("All values: " + string.Join(", ", aValues.Select(v => v.ToString("F4"))));
+            else
+            {
+                for (int i = 0; i < device.inputPins.Length; i++)
+                {
+                    Console.WriteLine($"{device.inputPins[i]} = {aValues[i]:F4}");
+                }
+            }
         }
 
         // Prints the current data to the console (does not save)
-        public void PrintData()
+        public void PrintData(int? angle)
         {
             double[] aValues = ReadData();
-            PrintValues(aValues);
+            PrintValues(aValues, angle);
         }
 
         // Reads data and saves it to the CSV file (also prints to console)
@@ -90,7 +100,7 @@ namespace Device
                 // Write one row: Timestamp,<val1>,<val2>,...
                 string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F4")));
                 File.AppendAllText(filePath, row + Environment.NewLine);
-                PrintValues(aValues);
+                PrintValues(aValues, angle);
             }
             else
             {
@@ -99,7 +109,7 @@ namespace Device
                 // Write one row: Timestamp,<val1>,<val2>,...
                 string row = timestamp + "," + string.Join(",", aValues.Select(v => v.ToString("F4")));
                 File.AppendAllText(this.filePath, row + Environment.NewLine);
-                PrintValues(aValues);
+                PrintValues(aValues, angle);
             }
         }
     }

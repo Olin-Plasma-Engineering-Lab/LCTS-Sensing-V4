@@ -33,19 +33,28 @@ namespace Device
 
         public void SetServoAngle(int angle)
         {
-            int dutyCycle = CalculateDutyCycle(angle);
-            int clockTickRate = coreFrequency / clockDivisor;
-            int clockRollValue = clockTickRate / desiredFrequency;
-            int pwmConfigA = (int)(clockRollValue * ((double)dutyCycle / 100));
-            LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_INDEX", 0);
-            LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CLOCK_SOURCE", 0);
-            LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_ENABLE", 1);
-            LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ENABLE", 1);
-            LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_DIVISOR", clockDivisor);
-            LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue);
-            LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CONFIG_A", pwmConfigA);
-            Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {dutyCycle} % is now being output on DIO{pwmDIO}");
-
+            try
+            {
+                int dutyCycle = CalculateDutyCycle(angle);
+                int clockTickRate = coreFrequency / clockDivisor;
+                int clockRollValue = clockTickRate / desiredFrequency;
+                int pwmConfigA = (int)(clockRollValue * ((double)dutyCycle / 100));
+                LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_INDEX", 0);
+                LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CLOCK_SOURCE", 0);
+                LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_ENABLE", 1);
+                LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ENABLE", 1);
+                LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_DIVISOR", clockDivisor);
+                LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue);
+                LJM.eWriteName(device.Handle, $"DIO{pwmDIO}_EF_CONFIG_A", pwmConfigA);
+                Console.Out.WriteLine($"A PWM Signal at {desiredFrequency} Hz with a duty cycle of {dutyCycle} % is now being output on DIO{pwmDIO}");
+            }
+            catch (LJM.LJMException e)
+            {
+                device.showErrorMessage(e);
+                Console.WriteLine("Error occurred. Press enter to exit.");
+                Console.ReadLine();
+                Environment.Exit(-1);
+            }
         }
 
         public void TurnOffPWM()

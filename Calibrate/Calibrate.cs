@@ -4,9 +4,7 @@
 // Generate a series of PWM signals for controlling a servo.
 // This will be used for calibration purposes.
 //-----------------------------------------------------------------------------
-using System.Data;
 using Device;
-using LabJack;
 
 
 namespace Calibrate
@@ -33,10 +31,12 @@ namespace Calibrate
             int positionTwo = 2;
             int positionThree = 3;
             int positionFour = 4;
-            string[] inputPin = []; // Set this to the appropriate pin name or value
+            string[] inputPin = ["AIN0"]; // Set this to the appropriate pin name or value
 
             LabJackDevice device = new(inputPin);
             device.Open();
+            device.ConfigurePins();
+
 
             int[] calibrationPositions = [positionZero, positionOne, positionTwo, positionThree, positionFour];
             // ---------------------------------------------
@@ -50,14 +50,17 @@ namespace Calibrate
 
             DataAcquisition DAQ = new(device, servoCal);
 
+            DAQ.CreateOutputFile();
+
             foreach (int position in calibrationPositions)
             {
                 Console.WriteLine($"Press enter to go to angle {position} degrees");
                 Console.ReadLine();
+                servoCal.SetServoAngle(position);
                 Console.WriteLine($"Servo set to angle {position} degrees. Data is being recorded. Press enter to continue.");
-                while (!Console.KeyAvailable)
+                while (true)
                 {
-                    DAQ.ReadAndSave(position);
+                    //DAQ.ReadAndSave(position);
                 }
                 Console.ReadLine();
             }
