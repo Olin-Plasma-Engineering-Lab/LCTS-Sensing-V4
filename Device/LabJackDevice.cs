@@ -16,6 +16,8 @@ namespace Device
         private string _ipAddrStr = "";
         private bool _isOpen = false;
 
+        private int _counterDIO = 18;
+
         public int Handle => _handle;
         public int DevType => _devType;
         public int ConType => _conType;
@@ -27,6 +29,8 @@ namespace Device
         public bool IsOpen => _isOpen;
 
         public string[] inputPins = inputPins;
+
+        public int counterDIO => _counterDIO;
 
         public void Open(string deviceType = "T7", string connectionType = "ANY", string identifier = "ANY")
         {

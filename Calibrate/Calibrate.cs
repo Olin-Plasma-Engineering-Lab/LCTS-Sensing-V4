@@ -27,10 +27,10 @@ namespace Calibrate
             // ------------- USER INPUT VALUES -------------
             int desiredFrequency = 50;  // Set this value to your desired PWM Frequency Hz. 
             int positionZero = 0;
-            int positionOne = 1;
-            int positionTwo = 2;
-            int positionThree = 3;
-            int positionFour = 4;
+            int positionOne = 90;
+            int positionTwo = 180;
+            int positionThree = 90;
+            int positionFour = 0;
             string[] inputPin = ["AIN0"]; // Set this to the appropriate pin name or value
 
             LabJackDevice device = new(inputPin);
@@ -50,7 +50,8 @@ namespace Calibrate
 
             DataAcquisition DAQ = new(device, servoCal);
 
-            DAQ.CreateOutputFile();
+            // DAQ.CreateOutputFile();
+
 
             foreach (int position in calibrationPositions)
             {
@@ -58,14 +59,15 @@ namespace Calibrate
                 Console.ReadLine();
                 servoCal.SetServoAngle(position);
                 Console.WriteLine($"Servo set to angle {position} degrees. Data is being recorded. Press enter to continue.");
-                while (true)
+                while (!Console.KeyAvailable)
                 {
                     //DAQ.ReadAndSave(position);
                 }
                 Console.ReadLine();
+                servoCal.TurnOffPWM();
             }
 
-            servoCal.TurnOffPWM();
+            // servoCal.TurnOffPWM();
 
             device.Dispose();
             Console.WriteLine("\nDone.\nPress the enter key to exit.");
