@@ -27,9 +27,9 @@ namespace Calibrate
             // ------------- USER INPUT VALUES -------------
             int desiredFrequency = 50;  // Set this value to your desired PWM Frequency Hz. 
             int positionZero = 0;
-            int positionOne = 90;
-            int positionTwo = 180;
-            int positionThree = 90;
+            int positionOne = 180;
+            int positionTwo = 0;
+            int positionThree = 180;
             int positionFour = 0;
             string[] inputPin = ["AIN0"]; // Set this to the appropriate pin name or value
 
@@ -50,7 +50,7 @@ namespace Calibrate
 
             DataAcquisition DAQ = new(device, servoCal);
 
-            // DAQ.CreateOutputFile();
+            DAQ.CreateOutputFile();
 
 
             foreach (int position in calibrationPositions)
@@ -61,7 +61,7 @@ namespace Calibrate
                 Console.WriteLine($"Servo set to angle {position} degrees. Data is being recorded. Press enter to continue.");
                 while (!Console.KeyAvailable)
                 {
-                    //DAQ.ReadAndSave(position);
+                    DAQ.ReadAndSave(position);
                 }
                 Console.ReadLine();
                 servoCal.TurnOffPWM();

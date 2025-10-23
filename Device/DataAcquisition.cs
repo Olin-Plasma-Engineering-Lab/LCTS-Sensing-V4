@@ -64,7 +64,7 @@ namespace Device
             {
                 for (int i = 0; i < device.inputPins.Length; i++)
                 {
-                    Console.WriteLine($"{position}:{device.inputPins[i]} = {aValues[i]:F4}");
+                    Console.WriteLine($"{position}:{device.inputPins[i]} = {aValues[i]:F6}");
                 }
                 // Console.WriteLine("All values: " + string.Join(", ", aValues.Select(v => v.ToString("F4"))));
             }
@@ -72,7 +72,7 @@ namespace Device
             {
                 for (int i = 0; i < device.inputPins.Length; i++)
                 {
-                    Console.WriteLine($"{device.inputPins[i]} = {aValues[i]:F4}");
+                    Console.WriteLine($"{device.inputPins[i]} = {aValues[i]:F6}");
                 }
             }
         }
@@ -98,7 +98,7 @@ namespace Device
                 double[] aValues = ReadData();
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 // Write one row: Timestamp,<val1>,<val2>,...
-                string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F4")));
+                string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
                 File.AppendAllText(filePath, row + Environment.NewLine);
                 PrintValues(aValues, angle);
             }
@@ -107,7 +107,7 @@ namespace Device
                 double[] aValues = ReadData();
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 // Write one row: Timestamp,<val1>,<val2>,...
-                string row = timestamp + "," + string.Join(",", aValues.Select(v => v.ToString("F4")));
+                string row = timestamp + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
                 File.AppendAllText(this.filePath, row + Environment.NewLine);
                 PrintValues(aValues, angle);
             }

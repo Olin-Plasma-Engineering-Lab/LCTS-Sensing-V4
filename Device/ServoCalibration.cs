@@ -35,9 +35,7 @@ namespace Device
         {
             try
             {
-                Console.WriteLine(angle);
                 float dutyCycle = CalculateDutyCycle(angle);
-                Console.WriteLine(dutyCycle);
                 int clockTickRate = coreFrequency / clockDivisor;
                 int clockRollValue = clockTickRate / desiredFrequency;
                 

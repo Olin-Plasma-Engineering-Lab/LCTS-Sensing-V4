@@ -22,9 +22,9 @@ namespace ReadRVDT
             int intervalHandle = 1;
             int skippedIntervals = 0;
 
-            string[] inputPins = ["AIN0", "AIN1", "AIN2", "AIN3", "AIN4", "AIN5"];
+            string[] inputPins = ["AIN13"];
 
-            Console.WriteLine("Hello OPEL!");
+            Console.WriteLine("Hello OPEL! Press enter to begin.");
             Console.ReadLine();
 
             LabJackDevice device = new(inputPins);
