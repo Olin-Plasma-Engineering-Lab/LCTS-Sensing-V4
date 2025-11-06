@@ -21,11 +21,30 @@ namespace ReadRVDT
         {
             int intervalHandle = 1;
             int skippedIntervals = 0;
-
-            string[] inputPins = ["AIN13"];
+            
 
             Console.WriteLine("Hello OPEL! Press enter to begin.");
             Console.ReadLine();
+
+            int numSensors = 0;
+            Console.Write("Enter the number of sensors connected (positive integer): ");
+            while (true)
+            {
+                string? input = Console.ReadLine();
+                if (int.TryParse(input, out numSensors) && numSensors > 0)
+                {
+                    break;
+                }
+                Console.Write("Please enter a positive integer for the number of sensors: ");
+            }
+
+            string[] inputPins = new string[numSensors];
+            for (int i = 0; i < numSensors; i++)
+            {
+                inputPins[i] = "AIN" + i;
+            }
+
+            Console.WriteLine($"Configured {numSensors} sensor(s): {string.Join(", ", inputPins)}");
 
             LabJackDevice device = new(inputPins);
             device.Open();
