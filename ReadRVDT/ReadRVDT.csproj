@@ -6,6 +6,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Publish settings: produce a single-file, self-contained executable on build -->
+  <PropertyGroup>
+    <!-- Change RuntimeIdentifier if you need linux/osx or arm -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- Automatically run the publish step during build so the exe appears on each build -->
+    <PublishOnBuild>true</PublishOnBuild>
+  </PropertyGroup>
+
     <ItemGroup Condition="$([MSBuild]::IsOsPlatform('Windows'))">
     <Reference Include="LabJack.LJM">
         <HintPath>C:\Program Files (x86)\LabJack\Drivers\LabJack.LJM.dll</HintPath>
@@ -14,5 +26,16 @@
 
   <ItemGroup>
     <Compile Include="..\Device\*.cs" />
+  </ItemGroup>
+
+  <!--
+    If your project depends on native LabJack libraries (DLLs), put them under
+    `runtimes\win-x64\native\` (or adjust the path below) so they are copied
+    into the publish folder. Example: copy LabJack.LJM.dll, LabJack.LJM.Native.dll, etc.
+  -->
+  <ItemGroup>
+    <None Include="runtimes\win-x64\native\**\*.*">
+      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+    </None>
   </ItemGroup>
 </Project>

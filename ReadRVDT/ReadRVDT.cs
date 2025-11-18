@@ -54,11 +54,9 @@ namespace ReadRVDT
             Console.Write("Ready to take data? Pressing any key while data is being collected");
             Console.WriteLine(" will cause the script to exit. BE CAREFUL! Type 'yes' and press enter to acknowledge.");
 
-            if (Console.ReadLine() != "yes")
+            while (Console.ReadLine() != "yes")
             {
-                Console.WriteLine("Incorrect response. Exiting program. Bye!");
-                Console.ReadLine();
-                Environment.Exit(0);
+                Console.WriteLine("Incorrect response. Try again.");
             }
 
             LJM.StartInterval(intervalHandle, 100000);
