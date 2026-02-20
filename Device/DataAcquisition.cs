@@ -60,13 +60,12 @@ namespace Device
 
         private void PrintValues(double[] aValues, int? position)
         {
-            if (isCalibrating & position is not null)
+            if (isCalibrating && position is not null)
             {
                 for (int i = 0; i < device.inputPins.Length; i++)
                 {
                     Console.WriteLine($"{position}:{device.inputPins[i]} = {aValues[i]:F6}");
                 }
-                // Console.WriteLine("All values: " + string.Join(", ", aValues.Select(v => v.ToString("F4"))));
             }
             else
             {
@@ -93,14 +92,14 @@ namespace Device
                 CreateOutputFile();
             }
 
-            if (isCalibrating & angle != null)
+            if (isCalibrating && angle != null)
             {
                 double[] aValues = ReadData();
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                // Write one row: Timestamp,<val1>,<val2>,...
+                // Write one row: Timestamp,Angle,<val1>,<val2>,...
                 string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
                 File.AppendAllText(filePath, row + Environment.NewLine);
-                PrintValues(aValues, angle);
+                // Do not print values here; use PrintData() when explicit console output is desired
             }
             else
             {
@@ -109,7 +108,7 @@ namespace Device
                 // Write one row: Timestamp,<val1>,<val2>,...
                 string row = timestamp + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
                 File.AppendAllText(this.filePath, row + Environment.NewLine);
-                PrintValues(aValues, angle);
+                // Do not print values here; use PrintData() when explicit console output is desired
             }
         }
     }

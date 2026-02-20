@@ -49,12 +49,15 @@ namespace Device
                 LJM.eWriteName(device.Handle, "DIO_EF_CLOCK0_ROLL_VALUE", clockRollValue); // Set calculated Clock Roll Value.
 
                 // Configure PWM Registers
+                // Ensure EF is disabled before changing index (avoids EF_CAN_NOT_CHANGE_INDEX_WHILE_ENABLED)
+                LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_ENABLE", pwmDIO), 0);
                 LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_INDEX", pwmDIO), 0);              // Set DIO#_EF_INDEX to 0 - PWM Out.
                 LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_CLOCK_SOURCE", pwmDIO), 0);       // Set DIO#_EF to use clock 0. Formerly DIO#_EF_OPTIONS, you may need to switch to this name on older LJM versions.
-                LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_CONFIG_A", pwmDIO), pwmConfigA);  // Set DIO#_EF_CONFIG_A to the calculated value.
+                LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_CONFIG_A", pwmDIO), (double)pwmConfigA);  // Set DIO#_EF_CONFIG_A to the calculated value.
                 LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_ENABLE", pwmDIO), 1);             // Enable the DIO#_EF Mode, PWM signal will not start until DIO_EF and CLOCK are enabled.
 
                 // Configure High-Speed Counter Registers
+                LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_ENABLE", device.counterDIO), 0);
                 LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_INDEX", device.counterDIO), 7);          // Set DIO#_EF_INDEX to 7 - High-Speed Counter.
                 LJM.eWriteName(device.Handle, String.Format("DIO{0}_EF_ENABLE", device.counterDIO), 1);         // Enable the High-Speed Counter.
 
@@ -81,8 +84,9 @@ namespace Device
                     String.Format("DIO{0}_EF_ENABLE", device.counterDIO),
                 };
 
-                double[] aValues = new double[device.inputPins.Length]; 
                 int numFrames = aNames.Length;
+                double[] aValues = new double[numFrames]; 
+                for (int i = 0; i < numFrames; i++) aValues[i] = 0; // disable all
             int errorAddress = -1;
                 LJM.eWriteNames(device.Handle, numFrames, aNames, aValues, ref errorAddress);
         }
