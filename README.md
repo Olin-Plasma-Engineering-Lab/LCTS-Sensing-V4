@@ -6,14 +6,18 @@ The project in this repo is used to control a LabJack T7 data acquisition device
 Using the scripts requires the LabJack drivers (https://support.labjack.com/docs/ljm-software-installer-downloads-t4-t7-t8-digit).
 
 ## Python Implementation
-Create an environment `pip -m venv sensing`to create an environment called `sensing`
+Create an environment using `python -m venv sensing`to create an environment called `sensing`. Once the environment is created it does not need to be created again unless it gets deleted. You may have to re-enter the environment when you open a new terminal/command prompt though.
 
-Run `pip install -r requirements.txt` to install dependencies
+Enter the environment:
+- For Windows: `sensing\Scripts\activate`
+- For Linux: `source sensing/bin/activate`
+
+Run `pip install -r requirements.txt` to install dependencies. This also only has to be done once after creating and entering the environment for the first time.
 
 Run `python run_calibration.py` to execute the script
 
 
-## C# Implementation
+## C# Implementation (archive)
 The C# implementation is the original attempt for interfacing with the LabJack. While it works reliably, it is harder to add features in C# and isn't immediately compatible with Mac. Further implementations are in Python.
 
 ### Implementation
