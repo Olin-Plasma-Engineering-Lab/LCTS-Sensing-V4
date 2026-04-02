@@ -113,6 +113,8 @@ namespace Calibrate
                 while (true)
                 {
                     DAQ.ReadAndSave(positionZero);
+                    DAQ.PrintData(positionZero);
+
                     try
                     {
                         var files = Directory.GetFiles(Directory.GetCurrentDirectory(), "calibration*.csv");
@@ -123,7 +125,7 @@ namespace Calibrate
                             if (allLines.Length >= 2)
                             {
                                 var header = allLines[0].Split(',').Select(h => h.Trim()).ToArray();
-                                var lastLine = allLines[allLines.Length - 1].Split(',');
+                                var lastLine = allLines[^1].Split(',');
                                 // For each requested pin, find column index and print value
                                 foreach (var pin in inputPin)
                                 {
@@ -270,7 +272,9 @@ namespace Calibrate
                                 aborted = true;
                                 break;
                             }
-                            DAQ.ReadAndSave(angles[i]);
+                            // Save analog values without angle column, and print values to console
+                            DAQ.ReadAndSave(null);
+                            DAQ.PrintData(angles[i]);
                             Thread.Sleep(50);
                         }
 
@@ -299,7 +303,9 @@ namespace Calibrate
                                 }
                             }
 
-                            DAQ.ReadAndSave(angles[i]);
+                            // Keep printing analog values while waiting, do not save the angle
+                            DAQ.ReadAndSave(null);
+                            DAQ.PrintData(angles[i]);
                             Thread.Sleep(50);
                         }
 
@@ -381,7 +387,9 @@ namespace Calibrate
                                     aborted = true;
                                     break;
                                 }
-                                DAQ.ReadAndSave(anglesList[i]);
+                                // Save analog values without angle column, and print values to console
+                                DAQ.ReadAndSave(null);
+                                DAQ.PrintData(anglesList[i]);
                                 Thread.Sleep(50);
                             }
 
@@ -409,7 +417,9 @@ namespace Calibrate
                                     }
                                 }
 
-                                DAQ.ReadAndSave(anglesList[i]);
+                                // Keep printing analog values while waiting, do not save the angle
+                                DAQ.ReadAndSave(null);
+                                DAQ.PrintData(anglesList[i]);
                                 Thread.Sleep(50);
                             }
 
@@ -461,7 +471,9 @@ namespace Calibrate
                     }
 
                     // Read sensors and save the current angle label with each sample
-                    DAQ.ReadAndSave(currentAngle);
+                    // Read sensors: save analog values (no angle column) and print with angle label
+                    DAQ.ReadAndSave(null);
+                    DAQ.PrintData(currentAngle);
 
                     lastUp = upPressed;
                     lastDown = downPressed;

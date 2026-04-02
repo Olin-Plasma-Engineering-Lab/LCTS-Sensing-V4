@@ -19,10 +19,10 @@ namespace Device
         }
         public void CreateOutputFile()
         {
-            if (!isCalibrating)
+            // if (!isCalibrating)
             {
                 var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
-                filePath = fileTimestamp + ".csv";
+                filePath = "calibration - " + fileTimestamp + ".csv";
                 // Write CSV header if file does not exist
                 if (!File.Exists(filePath))
                 {
@@ -32,20 +32,20 @@ namespace Device
                 }
                 Console.WriteLine($"Output file path created: {this.filePath}");
             }
-            else
-            {
-                var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
-                filePath = "calibration - " + fileTimestamp + ".csv";
-                // Write CSV header if file does not exist
-                if (!File.Exists(filePath))
-                {
-                    // Header: Timestamp,<pin1>,<pin2>,...
-                    string header = "Timestamp, Angle," + string.Join(",", device.inputPins);
-                    File.AppendAllText(filePath, header + Environment.NewLine);
-                }
-                Console.WriteLine($"Output file path created: {this.filePath}");
+            // else
+            // {
+            //     var fileTimestamp = DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.fff");
+            //     filePath = "calibration - " + fileTimestamp + ".csv";
+            //     // Write CSV header if file does not exist
+            //     if (!File.Exists(filePath))
+            //     {
+            //         // Header: Timestamp,<pin1>,<pin2>,...
+            //         string header = "Timestamp, Angle," + string.Join(",", device.inputPins);
+            //         File.AppendAllText(filePath, header + Environment.NewLine);
+            //     }
+            //     Console.WriteLine($"Output file path created: {this.filePath}");
                 
-            }
+            // }
         }
 
         // Reads data from the device and returns the values (does not print or save)
@@ -92,16 +92,16 @@ namespace Device
                 CreateOutputFile();
             }
 
-            if (isCalibrating && angle != null)
-            {
-                double[] aValues = ReadData();
-                var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                // Write one row: Timestamp,Angle,<val1>,<val2>,...
-                string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
-                File.AppendAllText(filePath, row + Environment.NewLine);
-                // Do not print values here; use PrintData() when explicit console output is desired
-            }
-            else
+            // if (isCalibrating && angle != null)
+            // {
+            //     double[] aValues = ReadData();
+            //     var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            //     // Write one row: Timestamp,Angle,<val1>,<val2>,...
+            //     string row = timestamp + "," + (angle.ToString() ?? "") + "," + string.Join(",", aValues.Select(v => v.ToString("F6")));
+            //     File.AppendAllText(filePath, row + Environment.NewLine);
+            //     // Do not print values here; use PrintData() when explicit console output is desired
+            // }
+            // else
             {
                 double[] aValues = ReadData();
                 var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
