@@ -1,28 +1,173 @@
-"""Main calibration CLI translated from Calibrate.cs (simplified interactive controls).
+"""Calibration CLI for LabJack T7 + RVDT/thermocouples + servo control.
 
-Modes supported: 1) Timed sequence  2) Take data loop  3) Import steps from CSV
+Modes
+-----
+1) Calibration
+   1a) Timed sequence: run a list of (angle, duration) steps you enter manually.
+   1b) Interactive: hold Up/Down arrows to move the servo, Esc to exit.
+   1c) Import steps: read (angle, duration) pairs from a CSV file.
+2) Take data: continuously sample and live-plot AIN pins (no servo motion).
+
+Cross-platform keyboard input is provided by `pynput`, so the same script works
+on Windows, macOS, and Linux. On macOS you may need to grant accessibility
+permission to the terminal; on Linux you need an X server (or a uinput-capable
+backend).
 """
+
+from __future__ import annotations
 
 import os
 import sys
 import time
-import ctypes
-import subprocess
 import traceback
-import multiprocessing
-from types import SimpleNamespace
+from dataclasses import dataclass
+from typing import Iterable, List, Optional, Tuple
 
 
-def _plot_handle_process(handle):
-    if handle is None:
-        return None
-    return getattr(handle, "process", handle)
+# --------------------------------------------------------------------------
+# Package bootstrap so this file can be run as either
+#   python -m calibrate_py.calibrate
+# or
+#   python calibrate_py/calibrate.py
+# --------------------------------------------------------------------------
+if __package__ is None or __package__ == "":
+    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if pkg_root not in sys.path:
+        sys.path.insert(0, pkg_root)
+    __package__ = "calibrate_py"
+
+from .labjack_device import LabJackDevice
+from .servo_calibration import ServoCalibration
+from .data_acquisition import DataAcquisition
 
 
-def _is_plot_alive(handle):
-    p = _plot_handle_process(handle)
-    if p is None:
+# --------------------------------------------------------------------------
+# Configuration
+# --------------------------------------------------------------------------
+@dataclass
+class Config:
+    desired_frequency: int = 50         # PWM frequency (Hz)
+    core_frequency: int = 80_000_000    # T7 core clock
+    clock_divisor: int = 1
+    pwm_dio: int = 2
+
+    position_zero: int = 90             # angle that holds 360 servo still
+    position_up: int = 135              # while Up arrow held
+    position_down: int = 45             # while Down arrow held
+
+    sample_period_s: float = 0.05       # sleep between samples
+    take_data_period_s: float = 0.2     # sleep in "take data" mode
+
+    # CJC source for thermocouple conversion. "device" reads the T7 internal
+    # sensor (recommended when TCs are on AIN0-3 directly). Use "air" for a
+    # CB37 setup, or a fixed float in degrees Celsius for a static CJC.
+    cjc_source: object = "device"
+    cjc_offset_c: float = -3.0          # screw-terminal vs. on-board sensor delta
+
+
+# --------------------------------------------------------------------------
+# Cross-platform keyboard handling via pynput
+# --------------------------------------------------------------------------
+class KeyboardMonitor:
+    """Thread-safe view of currently-held keys.
+
+    Wraps a pynput keyboard listener so the main loop can ask
+        kb.is_held("up"), kb.is_held("escape"), kb.was_pressed("enter")
+    without worrying about console focus or input buffering.
+
+    `is_held()` reflects current physical key state (like Win32
+    GetAsyncKeyState). `was_pressed()` consumes one-shot press events from a
+    queue, which is useful for things like "press Enter to continue".
+    """
+
+    def __init__(self) -> None:
+        import queue
+        self._held: set = set()
+        self._press_queue: "queue.Queue" = queue.Queue()
+        self._listener = None
+        try:
+            from pynput import keyboard  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "pynput is required for keyboard input. Install with: pip install pynput"
+            ) from e
+
+        def on_press(key):
+            name = self._key_name(key)
+            self._held.add(name)
+            try:
+                self._press_queue.put_nowait(name)
+            except Exception:
+                pass
+
+        def on_release(key):
+            name = self._key_name(key)
+            self._held.discard(name)
+
+        self._listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+        self._listener.daemon = True
+        self._listener.start()
+
+    @staticmethod
+    def _key_name(key) -> str:
+        # Special keys (arrows, esc, enter, etc.) come through as keyboard.Key.<n>;
+        # character keys come through as keyboard.KeyCode with a `char` attribute.
+        if hasattr(key, "name"):
+            return key.name.lower()
+        if hasattr(key, "char") and key.char is not None:
+            return key.char.lower()
+        return str(key).lower()
+
+    def is_held(self, *names: str) -> bool:
+        """True if any of the given key names is currently held."""
+        wanted = {n.lower() for n in names}
+        return bool(wanted & self._held)
+
+    def was_pressed(self, *names: str) -> bool:
+        """True if any matching key appears in the press queue. Drains the queue."""
+        import queue
+        wanted = {n.lower() for n in names}
+        found = False
+        while True:
+            try:
+                k = self._press_queue.get_nowait()
+            except queue.Empty:
+                break
+            if k in wanted:
+                found = True
+        return found
+
+    def drain(self) -> None:
+        """Discard any pending press events."""
+        import queue
+        while True:
+            try:
+                self._press_queue.get_nowait()
+            except queue.Empty:
+                break
+
+    def stop(self) -> None:
+        if self._listener is not None:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+            self._listener = None
+
+
+# --------------------------------------------------------------------------
+# Live plot helpers (process management)
+# --------------------------------------------------------------------------
+@dataclass
+class PlotHandle:
+    process: object = None
+    stop_event: Optional[object] = None
+
+
+def _plot_alive(handle: Optional[PlotHandle]) -> bool:
+    if handle is None or handle.process is None:
         return False
+    p = handle.process
     if hasattr(p, "is_alive"):
         try:
             return p.is_alive()
@@ -36,10 +181,10 @@ def _is_plot_alive(handle):
     return False
 
 
-def _terminate_plot(handle):
-    p = _plot_handle_process(handle)
-    if p is None:
+def _terminate_plot(handle: Optional[PlotHandle]) -> None:
+    if handle is None or handle.process is None:
         return
+    p = handle.process
     try:
         p.terminate()
     except Exception:
@@ -50,454 +195,430 @@ def _terminate_plot(handle):
             pass
 
 
-# If this module is executed directly (python calibrate.py) the package
-# context is missing which breaks relative imports. Insert the package root
-# into sys.path and set __package__ so relative imports resolve when run as a script.
-if __package__ is None:
-    pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if pkg_root not in sys.path:
-        sys.path.insert(0, pkg_root)
-    __package__ = "calibrate_py"
-
-from .labjack_device import LabJackDevice
-from .servo_calibration import ServoCalibration
-from .data_acquisition import DataAcquisition
-
-
-def launch_live_plot(latest_file: str, cols=None):
-    # Prefer importing `calibrate_py.live_plot` and running its background helper.
+def launch_live_plot(csv_path: str, cols: Optional[Iterable[str]] = None) -> Optional[PlotHandle]:
+    """Start the live plot in a background process. Returns a PlotHandle or None."""
     try:
         from . import live_plot as lp
+    except Exception as e:
+        print(f"Could not import live_plot module: {e}")
+        return None
 
-        # normalize cols to list if needed
+    cols_arg: Optional[List[str]]
+    if cols is None:
         cols_arg = None
-        if cols:
-            if isinstance(cols, (list, tuple)):
-                cols_arg = list(cols)
-            else:
-                cols_arg = [str(cols)]
-
-        # create a command queue to receive key events from the plot window
-        q = multiprocessing.Queue()
-        proc = lp.start_live_plot(latest_file, cols=cols_arg, cmd_queue=q)
-        # lp.start_live_plot returns (Process, Event) tuple; wrap into a SimpleNamespace
-        try:
-            if isinstance(proc, tuple) and len(proc) == 2:
-                handle = SimpleNamespace(
-                    process=proc[0], stop_event=proc[1], cmd_queue=q
-                )
-            else:
-                handle = SimpleNamespace(process=proc, stop_event=None, cmd_queue=q)
-        except Exception:
-            handle = SimpleNamespace(process=proc, stop_event=None, cmd_queue=q)
-        print(
-            f"Started live plot for {latest_file} using calibrate_py.live_plot.start_live_plot"
-        )
-        return handle
-    except Exception:
-        # fallback to launching as a subprocess (script file)
-        candidates = [
-            os.path.join(os.path.dirname(__file__), "live_plot.py"),
-            os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "Calibrate", "live_plot.py"
-            ),
-            os.path.join(os.getcwd(), "live_plot.py"),
-        ]
-        script_path = None
-        for c in candidates:
-            if os.path.exists(c):
-                script_path = c
-                break
-
-        if script_path is None:
-            print("No live_plot.py found to launch.")
-            return None
-
-        try:
-            args = [sys.executable, script_path, "--file", latest_file]
-            if cols:
-                if isinstance(cols, (list, tuple)):
-                    cols_arg = ",".join(cols)
-                else:
-                    cols_arg = str(cols)
-                args += ["--cols", cols_arg]
-            proc = subprocess.Popen(args)
-            handle = SimpleNamespace(process=proc, stop_event=None, cmd_queue=None)
-            print(f"Started live plot for {latest_file} using {script_path}")
-            return handle
-        except Exception as e:
-            print(f"Could not start live plot: {e}")
-            return None
-
-
-def main():
-    desired_frequency = 50
-    position_zero = 90
-    position_up = 135
-    position_down = 45
-    core_frequency = 80000000
-    clock_divisor = 1
-    pwm_dio = 2
-
-    plot_proc = None
-    device = None
-    servo = None
-    daq = None
+    elif isinstance(cols, (list, tuple)):
+        cols_arg = list(cols)
+    else:
+        cols_arg = [str(cols)]
 
     try:
-        print(
-            "Select operation:\n1) Calibration (timed / CSV)\n2) Take data (print + live-plot specified AIN pins)"
-        )
-        primary_mode = input("Enter 1 or 2: ").strip()
+        # start_live_plot returns (Process, Event); cmd_queue is no longer used
+        # because we capture keys directly with pynput.
+        proc, evt = lp.start_live_plot(csv_path, cols=cols_arg)
+        print(f"Started live plot for {csv_path}")
+        return PlotHandle(process=proc, stop_event=evt)
+    except Exception as e:
+        print(f"Could not start live plot: {e}")
+        return None
 
-        if primary_mode == "2":
-            pos_pin = input("Enter position sensor pin (e.g., AIN0): ").strip()
-            if not pos_pin:
-                pos_pin = "AIN0"
-            therm_raw = input(
-                "Enter thermocouple input pin(s) comma-separated (e.g., AIN1,AIN2) or leave blank: "
-            ).strip()
-            if therm_raw:
-                therm_pins = [p.strip() for p in therm_raw.split(",")]
-            else:
-                therm_pins = []
-            input_pins = [pos_pin] + therm_pins
 
-            device = LabJackDevice(input_pins)
-            device.open()
-            device.configure_pins()
+def _plot_quit_requested(handle: Optional[PlotHandle]) -> bool:
+    if handle is None or handle.stop_event is None:
+        return False
+    try:
+        return bool(handle.stop_event.is_set())
+    except Exception:
+        return False
 
-            # Ask whether to open live plot (allow running without plotting)
-            raw_plot = input("Open live plot window? [Y/n]: ").strip().lower()
-            show_plot = not (raw_plot in ("n", "no"))
-            servo = ServoCalibration(
-                device, core_frequency, pwm_dio, clock_divisor, desired_frequency
-            )
-            daq = DataAcquisition(device, servo)
-            daq.create_output_file()
-            # Enable thermocouple conversion if more than one input pin supplied
-            if len(input_pins) > 1:
-                daq.enable_thermocouple_conversion()
 
-            # Launch live_plot for the CSV file we just created (shows live data by default)
-            if daq.file_path and show_plot:
-                if not plot_proc or not _is_plot_alive(plot_proc):
-                    plot_proc = launch_live_plot(
-                        os.path.join(os.getcwd(), daq.file_path), cols=input_pins
-                    )
+# --------------------------------------------------------------------------
+# Sampling helpers shared by all modes
+# --------------------------------------------------------------------------
+def _abort_check(kb: KeyboardMonitor, plot: Optional[PlotHandle]) -> bool:
+    """True if user pressed Esc or closed the plot window."""
+    if kb.is_held("esc"):
+        return True
+    if _plot_quit_requested(plot):
+        return True
+    return False
 
-            print("Capturing data. Press Ctrl-C to stop.")
+
+def sample_for_duration(
+    daq: DataAcquisition,
+    duration_s: float,
+    angle_label: Optional[int],
+    kb: KeyboardMonitor,
+    plot: Optional[PlotHandle],
+    period_s: float,
+) -> bool:
+    """Sample (and optionally print) for `duration_s` seconds or until aborted.
+
+    Returns True if completed normally, False if aborted by Esc/plot quit.
+    """
+    t0 = time.time()
+    while time.time() - t0 < duration_s:
+        if _abort_check(kb, plot):
+            return False
+        daq.sample_print_save(angle_label)
+        time.sleep(period_s)
+    return True
+
+
+def wait_for_enter_or_esc(
+    daq: DataAcquisition,
+    angle_label: int,
+    kb: KeyboardMonitor,
+    plot: Optional[PlotHandle],
+    period_s: float,
+) -> bool:
+    """Block until Enter (continue) or Esc/plot-quit (abort).
+
+    Keeps sampling and printing while waiting. Returns True to continue,
+    False to abort.
+    """
+    kb.drain()  # forget any keys pressed during the previous step
+    while True:
+        if _abort_check(kb, plot):
+            return False
+        if kb.was_pressed("enter"):
+            return True
+        daq.sample_print_save(angle_label)
+        time.sleep(period_s)
+
+
+# --------------------------------------------------------------------------
+# User-input helpers
+# --------------------------------------------------------------------------
+def prompt_pins() -> List[str]:
+    pos_pin = input("Enter position sensor pin (e.g., AIN0): ").strip() or "AIN0"
+    therm_raw = input(
+        "Enter thermocouple input pin(s) comma-separated (e.g., AIN1,AIN2) or leave blank: "
+    ).strip()
+    therm_pins = [p.strip() for p in therm_raw.split(",") if p.strip()] if therm_raw else []
+    return [pos_pin] + therm_pins
+
+
+def prompt_int(prompt: str, default: int) -> int:
+    raw = input(prompt).strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"Invalid integer; using default {default}.")
+        return default
+
+
+def prompt_yes_no(prompt: str, default_yes: bool = True) -> bool:
+    raw = input(prompt).strip().lower()
+    if not raw:
+        return default_yes
+    return raw not in ("n", "no")
+
+
+# --------------------------------------------------------------------------
+# CSV step parsing
+# --------------------------------------------------------------------------
+def parse_steps_csv(path: str, cfg: Config) -> List[Tuple[int, float]]:
+    steps: List[Tuple[int, float]] = []
+    with open(path, "r", encoding="utf-8") as f:
+        for raw in f:
+            s = raw.strip()
+            if not s:
+                continue
+            parts = [p.strip() for p in s.split(",")]
+            if len(parts) < 2:
+                continue
+            a_part, d_part = parts[0], parts[1]
             try:
-                while True:
-                    daq.read_and_save(position_zero)
-                    daq.print_data(position_zero)
-                    # If the plot process requested quit (user pressed 'q'), stop capture
-                    try:
-                        if (
-                            plot_proc
-                            and getattr(plot_proc, "stop_event", None)
-                            and plot_proc.stop_event.is_set()
-                        ):
-                            raise KeyboardInterrupt
-                    except Exception:
-                        pass
-                    time.sleep(0.2)
-            except KeyboardInterrupt:
-                print("Stopping capture...")
-                if servo:
-                    servo.turn_off_pwm()
-                # ensure plot is closed
-                try:
-                    if plot_proc and _is_plot_alive(plot_proc):
-                        _terminate_plot(plot_proc)
-                except Exception:
-                    pass
-                if device:
-                    device.close()
-                print("Press Enter to acknowledge and exit.")
-                input()
-                return
-
-        # Calibration path
-        pos_pin = input("Enter position sensor pin (e.g., AIN0):").strip()
-        if not pos_pin:
-            pos_pin = "AIN0"
-        therm_raw = input(
-            "Enter thermocouple input pin(s) comma-separated (e.g., AIN1,AIN2) or leave blank:"
-        ).strip()
-        if therm_raw:
-            therm_pins = [p.strip() for p in therm_raw.split(",")]
-        else:
-            therm_pins = []
-        input_pins = [pos_pin] + therm_pins
-        rpm = input("Enter PWM DIO pin number (default 2):").strip()
-        if rpm:
+                duration = float(d_part)
+            except ValueError:
+                continue
+            if duration < 0:
+                continue
             try:
-                pwm_dio = int(rpm)
-            except Exception:
-                pwm_dio = 2
+                angle = int(a_part)
+            except ValueError:
+                a = a_part.lower()
+                if a in ("up", "u"):
+                    angle = cfg.position_up
+                elif a in ("down", "d"):
+                    angle = cfg.position_down
+                else:
+                    angle = cfg.position_zero
+            steps.append((angle, duration))
+    return steps
 
-        device = LabJackDevice(input_pins)
+
+# --------------------------------------------------------------------------
+# Modes
+# --------------------------------------------------------------------------
+def mode_take_data(cfg: Config, kb: KeyboardMonitor) -> None:
+    input_pins = prompt_pins()
+    show_plot = prompt_yes_no("Open live plot window? [Y/n]: ", default_yes=True)
+
+    device = LabJackDevice(input_pins)
+    plot: Optional[PlotHandle] = None
+    servo: Optional[ServoCalibration] = None
+    try:
         device.open()
         device.configure_pins()
 
         servo = ServoCalibration(
-            device, core_frequency, pwm_dio, clock_divisor, desired_frequency
+            device, cfg.core_frequency, cfg.pwm_dio, cfg.clock_divisor, cfg.desired_frequency
         )
         daq = DataAcquisition(device, servo)
-        daq.create_output_file()
         if len(input_pins) > 1:
-            daq.enable_thermocouple_conversion()
-        # Do not launch live plot yet for calibration path; wait until mode is chosen
-        # Ask whether to open live plot (applies after mode selection)
-        raw_plot = input("Open live plot window? [Y/n]: ").strip().lower()
-        show_plot = not (raw_plot in ("n", "no"))
+            daq.enable_thermocouple_conversion(cjc_source=cfg.cjc_source, cjc_offset_c=cfg.cjc_offset_c)
+        daq.create_output_file()
+
+        if show_plot and daq.file_path:
+            plot = launch_live_plot(os.path.join(os.getcwd(), daq.file_path), cols=input_pins)
+
+        print("Capturing data. Press Esc (or Ctrl-C) to stop.")
+        try:
+            while True:
+                if _abort_check(kb, plot):
+                    break
+                daq.sample_print_save(cfg.position_zero)
+                time.sleep(cfg.take_data_period_s)
+        except KeyboardInterrupt:
+            pass
+
+        print("Stopping capture...")
+    finally:
+        if servo is not None:
+            try:
+                servo.turn_off_pwm()
+            except Exception:
+                pass
+        if plot is not None and _plot_alive(plot):
+            _terminate_plot(plot)
+        device.close()
+
+
+def mode_calibrate(cfg: Config, kb: KeyboardMonitor) -> None:
+    input_pins = prompt_pins()
+    cfg.pwm_dio = prompt_int("Enter PWM DIO pin number (default 2): ", default=cfg.pwm_dio)
+
+    device = LabJackDevice(input_pins)
+    plot: Optional[PlotHandle] = None
+    servo: Optional[ServoCalibration] = None
+    try:
+        device.open()
+        device.configure_pins()
+
+        servo = ServoCalibration(
+            device, cfg.core_frequency, cfg.pwm_dio, cfg.clock_divisor, cfg.desired_frequency
+        )
+        daq = DataAcquisition(device, servo)
+        if len(input_pins) > 1:
+            daq.enable_thermocouple_conversion(cjc_source=cfg.cjc_source, cjc_offset_c=cfg.cjc_offset_c)
+        daq.create_output_file()
+
+        show_plot = prompt_yes_no("Open live plot window? [Y/n]: ", default_yes=True)
 
         print(
-            "Choose mode:\n1) Timed sequence (run steps for given durations)\n2) Interactive (hold Up/Down arrows)\n3) Import steps from CSV."
+            "Choose mode:\n"
+            "  1) Timed sequence (run steps for given durations)\n"
+            "  2) Interactive (hold Up/Down arrows)\n"
+            "  3) Import steps from CSV"
         )
-        mode = input("Enter 1, 2 or 3: ").strip()
+        sub_mode = input("Enter 1, 2 or 3: ").strip()
 
-        # Start live plot now that a calibration mode has been chosen
-        if daq.file_path and show_plot:
-            if not plot_proc or not _is_plot_alive(plot_proc):
-                plot_proc = launch_live_plot(
-                    os.path.join(os.getcwd(), daq.file_path), cols=input_pins
-                )
+        if show_plot and daq.file_path:
+            plot = launch_live_plot(os.path.join(os.getcwd(), daq.file_path), cols=input_pins)
 
-        if mode == "1":
+        if sub_mode == "1":
+            _run_timed_sequence(cfg, daq, servo, kb, plot)
+        elif sub_mode == "2":
+            _run_interactive(cfg, daq, servo, kb, plot)
+        elif sub_mode == "3":
+            _run_csv_steps(cfg, daq, servo, kb, plot)
+        else:
+            print("Unknown mode; nothing to do.")
+    finally:
+        if servo is not None:
             try:
-                steps = int(input("Number of steps: ").strip())
+                servo.turn_off_pwm()
             except Exception:
-                print("Invalid number; exiting.")
-                return
-            angles = []
-            durations = []
-            for i in range(steps):
-                d = input(f"Step {i+1} direction (up/down/zero): ").strip().lower()
-                if d in ("up", "u"):
-                    angles.append(position_up)
-                elif d in ("down", "d"):
-                    angles.append(position_down)
-                else:
-                    angles.append(position_zero)
-                try:
-                    dur = float(input(f"Step {i+1} duration (seconds): ").strip())
-                except Exception:
-                    dur = 1.0
-                durations.append(dur)
+                pass
+        if plot is not None and _plot_alive(plot):
+            _terminate_plot(plot)
+        device.close()
 
-            for i in range(steps):
-                print(
-                    f"Starting step {i+1}/{steps}: angle {angles[i]}, duration {durations[i]}s."
-                )
-                servo.set_servo_angle(angles[i])
-                t0 = time.time()
-                try:
-                    while time.time() - t0 < durations[i]:
-                        daq.read_and_save(None)
-                        daq.print_data(angles[i])
-                        # stop if plot requested quit
-                        try:
-                            if (
-                                plot_proc
-                                and getattr(plot_proc, "stop_event", None)
-                                and plot_proc.stop_event.is_set()
-                            ):
-                                raise KeyboardInterrupt
-                        except Exception:
-                            pass
-                        time.sleep(0.05)
-                except KeyboardInterrupt:
-                    print("Aborted by user.")
-                    break
-                servo.turn_off_pwm()
 
-        elif mode == "3":
-            csv_path = input("Enter CSV file path: ").strip()
-            if not csv_path or not os.path.exists(csv_path):
-                print("File not found or invalid path. Exiting CSV mode.")
-                return
-            lines = []
-            with open(csv_path, "r", encoding="utf-8") as f:
-                for raw in f:
-                    s = raw.strip()
-                    if not s:
-                        continue
-                    parts = [p.strip() for p in s.split(",")]
-                    if len(parts) < 2:
-                        continue
-                    a_part, d_part = parts[0], parts[1]
-                    try:
-                        duration = float(d_part)
-                    except Exception:
-                        continue
-                    if a_part.isdigit() or (
-                        a_part.startswith("-") and a_part[1:].isdigit()
-                    ):
-                        angle = int(a_part)
-                    else:
-                        a = a_part.lower()
-                        if a in ("up", "u"):
-                            angle = position_up
-                        elif a in ("down", "d"):
-                            angle = position_down
-                        else:
-                            angle = position_zero
-                    lines.append((angle, duration))
+def _run_timed_sequence(
+    cfg: Config,
+    daq: DataAcquisition,
+    servo: ServoCalibration,
+    kb: KeyboardMonitor,
+    plot: Optional[PlotHandle],
+) -> None:
+    steps = prompt_int("Number of steps: ", default=0)
+    if steps <= 0:
+        print("No steps requested; exiting.")
+        return
 
-            for angle, duration in lines:
-                print(f"Running CSV step: angle {angle}, duration {duration}")
-                servo.set_servo_angle(angle)
-                t0 = time.time()
-                try:
-                    while time.time() - t0 < duration:
-                        daq.read_and_save(None)
-                        daq.print_data(angle)
-                        try:
-                            if (
-                                plot_proc
-                                and getattr(plot_proc, "stop_event", None)
-                                and plot_proc.stop_event.is_set()
-                            ):
-                                raise KeyboardInterrupt
-                        except Exception:
-                            pass
-                        time.sleep(0.05)
-                except KeyboardInterrupt:
-                    print("Aborted by user.")
-                    break
-                servo.turn_off_pwm()
+    sequence: List[Tuple[int, float]] = []
+    for i in range(steps):
+        d = input(f"Step {i+1} direction (up/down/zero): ").strip().lower()
+        if d in ("up", "u"):
+            angle = cfg.position_up
+        elif d in ("down", "d"):
+            angle = cfg.position_down
+        else:
+            angle = cfg.position_zero
+        try:
+            dur = float(input(f"Step {i+1} duration (seconds): ").strip())
+        except ValueError:
+            dur = 1.0
+        sequence.append((angle, dur))
 
-        elif mode == "2":
-            # Interactive: hold Up/Down arrows to move servo, Esc to exit
-            VK_UP = 0x26
-            VK_DOWN = 0x28
-            VK_ESCAPE = 0x1B
+    for i, (angle, dur) in enumerate(sequence, start=1):
+        print(f"Starting step {i}/{len(sequence)}: angle {angle}, duration {dur}s.")
+        servo.set_servo_angle(angle)
+        completed = sample_for_duration(daq, dur, angle, kb, plot, cfg.sample_period_s)
+        servo.turn_off_pwm()
+        if not completed:
+            print("Aborted by user.")
+            return
 
-            current_angle = position_zero
-            servo.set_servo_angle(current_angle)
-            last_angle = None
-            # Launch live plot now that interactive mode is selected (respect user's choice)
-            if daq.file_path and show_plot:
-                if not plot_proc or not _is_plot_alive(plot_proc):
-                    plot_proc = launch_live_plot(
-                        os.path.join(os.getcwd(), daq.file_path), cols=input_pins
-                    )
 
-            print("Interactive mode: hold Up/Down to move servo; press Esc to exit.")
-            try:
-                while True:
-                    # If plot requested quit, exit interactive mode
-                    try:
-                        if (
-                            plot_proc
-                            and getattr(plot_proc, "stop_event", None)
-                            and plot_proc.stop_event.is_set()
-                        ):
-                            print("Plot requested quit — exiting interactive mode.")
-                            break
-                    except Exception:
-                        pass
-                    # Prefer plot-window key events if available
-                    handled = False
-                    try:
-                        if (
-                            plot_proc
-                            and getattr(plot_proc, "cmd_queue", None) is not None
-                        ):
-                            # non-blocking read
-                            try:
-                                key = plot_proc.cmd_queue.get_nowait()
-                            except Exception:
-                                key = None
-                            if key is not None:
-                                k = str(key).lower()
-                                if k in ("up", "uparrow"):
-                                    current_angle = position_up
-                                    handled = True
-                                elif k in ("down", "downarrow"):
-                                    current_angle = position_down
-                                    handled = True
-                                elif k in ("escape", "esc", "q"):
-                                    print(
-                                        "Plot requested quit — exiting interactive mode."
-                                    )
-                                    break
-                    except Exception:
-                        pass
+def _prompt_csv_steps(cfg: Config) -> Optional[List[Tuple[int, float]]]:
+    """Prompt for a CSV file path until we get one that parses to >=1 valid step.
 
-                    if not handled:
-                        if (
-                            ctypes.windll.user32.GetAsyncKeyState(VK_ESCAPE) & 0x8000
-                        ) != 0:
-                            print("Escape pressed — exiting interactive mode.")
-                            break
+    Returns the parsed steps, or None if the user cancels (blank input).
+    """
+    while True:
+        csv_path = input(
+            "Enter CSV file path (or leave blank to cancel): "
+        ).strip()
+        if not csv_path:
+            print("Cancelled CSV mode.")
+            return None
 
-                        if (ctypes.windll.user32.GetAsyncKeyState(VK_UP) & 0x8000) != 0:
-                            current_angle = position_up
-                        elif (
-                            ctypes.windll.user32.GetAsyncKeyState(VK_DOWN) & 0x8000
-                        ) != 0:
-                            current_angle = position_down
-                        else:
-                            current_angle = position_zero
+        if not os.path.exists(csv_path):
+            print(f"File not found: {csv_path!r}. Try again.")
+            continue
 
-                    # Only update servo when desired angle changes to avoid repeated reconfiguration
-                    try:
-                        if last_angle is None or current_angle != last_angle:
-                            servo.set_servo_angle(current_angle)
-                            last_angle = current_angle
-                    except Exception:
-                        pass
-                    daq.read_and_save(None)
-                    daq.print_data(current_angle)
-                    time.sleep(0.05)
-            except KeyboardInterrupt:
-                print("Interactive aborted by user.")
-            finally:
-                if servo:
-                    servo.turn_off_pwm()
-                # close plot if running
-                try:
-                    if plot_proc and _is_plot_alive(plot_proc):
-                        _terminate_plot(plot_proc)
-                except Exception:
-                    pass
-                print("Press Enter to acknowledge and exit.")
-                input()
-                return
+        try:
+            steps = parse_steps_csv(csv_path, cfg)
+        except OSError as e:
+            print(f"Error reading CSV: {e}. Try again.")
+            continue
 
-    except Exception as e:
-        # Descriptive error handling: print traceback and clean up
+        if not steps:
+            print("No valid steps parsed from that CSV. Try again.")
+            continue
+
+        return steps
+
+
+def _run_csv_steps(
+    cfg: Config,
+    daq: DataAcquisition,
+    servo: ServoCalibration,
+    kb: KeyboardMonitor,
+    plot: Optional[PlotHandle],
+) -> None:
+    steps = _prompt_csv_steps(cfg)
+    if steps is None:
+        return
+
+    for i, (angle, dur) in enumerate(steps, start=1):
+        print(f"Starting step {i}/{len(steps)}: angle {angle}, duration {dur}s. Esc to abort.")
+        servo.set_servo_angle(angle)
+        completed = sample_for_duration(daq, dur, angle, kb, plot, cfg.sample_period_s)
+        servo.turn_off_pwm()
+        if not completed:
+            print("Aborted by user.")
+            return
+
+        print(f"Step {i} complete. Press Enter to continue, Esc to abort.")
+        if not wait_for_enter_or_esc(daq, angle, kb, plot, cfg.sample_period_s):
+            print("Aborted by user.")
+            return
+
+
+def _run_interactive(
+    cfg: Config,
+    daq: DataAcquisition,
+    servo: ServoCalibration,
+    kb: KeyboardMonitor,
+    plot: Optional[PlotHandle],
+) -> None:
+    print("Interactive mode: hold Up/Down to move servo; press Esc to exit.")
+    servo.set_servo_angle(cfg.position_zero)
+    last_angle: Optional[int] = cfg.position_zero
+
+    try:
+        while True:
+            if _abort_check(kb, plot):
+                print("Exiting interactive mode.")
+                break
+
+            if kb.is_held("up"):
+                current_angle = cfg.position_up
+            elif kb.is_held("down"):
+                current_angle = cfg.position_down
+            else:
+                current_angle = cfg.position_zero
+
+            # Reconfigure PWM only when the target angle actually changes.
+            # Without this guard the servo gets reset every loop iteration,
+            # which is wasteful and (on the T7) can cause visible jitter.
+            if current_angle != last_angle:
+                servo.set_servo_angle(current_angle)
+                last_angle = current_angle
+
+            daq.sample_print_save(current_angle)
+            time.sleep(cfg.sample_period_s)
+    except KeyboardInterrupt:
+        print("Interactive aborted by user.")
+    finally:
+        servo.turn_off_pwm()
+
+
+# --------------------------------------------------------------------------
+# Entry point
+# --------------------------------------------------------------------------
+def main() -> int:
+    cfg = Config()
+    kb: Optional[KeyboardMonitor] = None
+    try:
+        kb = KeyboardMonitor()
+    except RuntimeError as e:
+        print(f"Keyboard input unavailable: {e}")
+        return 1
+
+    try:
+        print(
+            "Select operation:\n"
+            "  1) Calibration (timed / interactive / CSV)\n"
+            "  2) Take data (print + live-plot specified AIN pins)"
+        )
+        primary = input("Enter 1 or 2: ").strip()
+
+        if primary == "2":
+            mode_take_data(cfg, kb)
+        elif primary == "1":
+            mode_calibrate(cfg, kb)
+        else:
+            print("Unknown selection; exiting.")
+            return 0
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    except Exception:
         print("An error occurred:")
-        traceback.print_exception(type(e), e, e.__traceback__)
-        try:
-            if plot_proc and _is_plot_alive(plot_proc):
-                _terminate_plot(plot_proc)
-        except Exception:
-            pass
-        try:
-            if device:
-                device.close()
-        except Exception:
-            pass
-        print("Press Enter to acknowledge the error and exit.")
-        input()
-        sys.exit(1)
+        traceback.print_exc()
+        return 1
+    finally:
+        if kb is not None:
+            kb.stop()
 
-    # Normal cleanup
-    try:
-        if servo:
-            servo.turn_off_pwm()
-    except Exception:
-        pass
-    try:
-        if device:
-            device.close()
-    except Exception:
-        pass
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
